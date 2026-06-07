@@ -1,0 +1,25 @@
+{
+  "name": "Geospatial Production Forecasting",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "18"
+    }
+  },
+  "postCreateCommand": "pip install -r requirements.txt && cd frontend && npm install",
+  "forwardPorts": [8000, 5173],
+  "portsAttributes": {
+    "8000": {"label": "Backend API", "onAutoForward": "notify"},
+    "5173": {"label": "Frontend", "onAutoForward": "openBrowser"}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}
