@@ -4,8 +4,7 @@ Forecast Service: Business logic for production forecasting.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
+from typing import Dict, Optional
 import json
 
 from backend.utils.config import DATA_DIR, MODELS_DIR, get_logger
@@ -50,8 +49,10 @@ class ForecastService:
             return None
         well_info = well.iloc[0].to_dict()
         history = self.temporal[self.temporal["well_id"] == well_id].tail(365)
-        well_info["production_history"] = history[["timestamp", "production_rate",
-                                                    "reservoir_pressure", "water_cut"]].to_dict(orient="records")
+        well_info["production_history"] = history[
+            ["timestamp", "production_rate",
+             "reservoir_pressure", "water_cut"]
+        ].to_dict(orient="records")
         return well_info
 
     def get_map_data(self) -> Dict:
@@ -59,8 +60,9 @@ class ForecastService:
             return {"wells": [], "faults": []}
 
         latest = self.temporal.groupby("well_id").last().reset_index()
-        merged = self.wells.merge(latest[["well_id", "production_rate", "reservoir_pressure",
-                                           "water_cut"]], on="well_id", how="left")
+        merged = self.wells.merge(
+            latest[["well_id", "production_rate", "reservoir_pressure",
+                    "water_cut"]], on="well_id", how="left")
 
         wells_data = []
         for _, row in merged.iterrows():

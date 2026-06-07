@@ -10,8 +10,7 @@ Combines:
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Optional
-import numpy as np
+from typing import Tuple
 
 
 class TemporalEncoder(nn.Module):

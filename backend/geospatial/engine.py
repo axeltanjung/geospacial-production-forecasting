@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cdist
 from scipy.interpolate import griddata
-from scipy.spatial import Voronoi
 import networkx as nx
 from typing import Tuple, Dict, List, Optional
 

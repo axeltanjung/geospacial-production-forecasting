@@ -9,12 +9,10 @@ Uses GPyTorch for efficient GP inference with:
 
 import torch
 import numpy as np
-import pandas as pd
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict
 
 try:
     import gpytorch
-    from gpytorch.models import ExactGP
     from gpytorch.means import ConstantMean
     from gpytorch.kernels import ScaleKernel, RBFKernel, MaternKernel, AdditiveKernel
     from gpytorch.likelihoods import GaussianLikelihood

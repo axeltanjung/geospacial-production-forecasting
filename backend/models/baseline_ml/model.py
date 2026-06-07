@@ -4,7 +4,7 @@ Baseline ML Models: XGBoost and LightGBM for production forecasting.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, List
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
@@ -43,10 +43,11 @@ class BaselineModels:
 
     def prepare_data(self, temporal_df: pd.DataFrame, wells_df: pd.DataFrame,
                      target_col: str = "future_production_t1") -> Tuple[np.ndarray, np.ndarray]:
-        merged = temporal_df.merge(wells_df[["well_id", "depth", "permeability_index",
-                                              "porosity_index", "distance_to_fault_line",
-                                              "distance_to_boundary"]],
-                                    on="well_id", how="left")
+        merged = temporal_df.merge(
+            wells_df[["well_id", "depth", "permeability_index",
+                      "porosity_index", "distance_to_fault_line",
+                      "distance_to_boundary"]],
+            on="well_id", how="left")
         available_cols = [c for c in FEATURE_COLUMNS if c in merged.columns]
         data = merged.dropna(subset=[target_col])
         X = data[available_cols].fillna(0).values

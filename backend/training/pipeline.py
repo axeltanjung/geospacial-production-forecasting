@@ -137,7 +137,6 @@ class TrainingPipeline:
 
         seq_length = 30
         well_ids = self.wells["well_id"].tolist()
-        num_wells = len(well_ids)
         temporal_features_list = []
         spatial_features_list = []
         targets_list = []
@@ -147,14 +146,18 @@ class TrainingPipeline:
             if len(well_data) < seq_length + 30:
                 continue
 
-            temporal_cols = ["production_rate", "water_cut", "gas_oil_ratio",
-                          "reservoir_pressure", "injection_rate"]
+            temporal_cols = [
+                "production_rate", "water_cut", "gas_oil_ratio",
+                "reservoir_pressure", "injection_rate"
+            ]
             available = [c for c in temporal_cols if c in well_data.columns]
             seq = well_data[available].fillna(0).values[-seq_length - 30:-30]
             temporal_features_list.append(seq)
 
-            spatial_cols = ["neighbor_well_avg_production", "neighbor_well_pressure_avg",
-                         "spatial_density_index", "local_depletion_factor"]
+            spatial_cols = [
+                "neighbor_well_avg_production", "neighbor_well_pressure_avg",
+                "spatial_density_index", "local_depletion_factor"
+            ]
             available_s = [c for c in spatial_cols if c in well_data.columns]
             spatial_features_list.append(well_data[available_s].fillna(0).values[-31])
             targets_list.append(well_data["production_rate"].values[-1])

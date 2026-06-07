@@ -4,8 +4,7 @@ Explainability Module: SHAP analysis + spatial influence explanations.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
-import json
+from typing import Dict, List
 
 try:
     import shap
@@ -37,21 +36,22 @@ class SpatialExplainer:
             "num_samples_explained": min(500, len(X))
         }
 
-    def explain_well_prediction(self, well_idx: int, model, X: np.ndarray,
-                                 feature_names: List[str]) -> Dict:
+    def explain_well_prediction(
+        self, well_idx: int, model, X: np.ndarray,
+        feature_names: List[str]
+    ) -> Dict:
         neighbors = np.where(self.connectivity[well_idx] > 0.01)[0]
         neighbor_weights = self.connectivity[well_idx][neighbors]
 
         well_info = self.wells.iloc[well_idx]
-        neighbor_wells = self.wells.iloc[neighbors]
 
         spatial_influence = []
         for i, (n_idx, weight) in enumerate(zip(neighbors, neighbor_weights)):
             spatial_influence.append({
                 "neighbor_id": self.wells.iloc[n_idx]["well_id"],
                 "distance": float(np.sqrt(
-                    (well_info["latitude"] - self.wells.iloc[n_idx]["latitude"])**2 +
-                    (well_info["longitude"] - self.wells.iloc[n_idx]["longitude"])**2
+                    (well_info["latitude"] - self.wells.iloc[n_idx]["latitude"])**2
+                    + (well_info["longitude"] - self.wells.iloc[n_idx]["longitude"])**2
                 )),
                 "connectivity_weight": float(weight),
                 "same_zone": bool(well_info["reservoir_zone"] == self.wells.iloc[n_idx]["reservoir_zone"])

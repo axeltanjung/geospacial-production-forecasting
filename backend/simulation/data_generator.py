@@ -253,9 +253,9 @@ class ReservoirFieldGenerator:
         df["future_production_t30"] = df.groupby("well_id")["production_rate"].shift(-30)
 
         df["reservoir_health_score"] = (
-            0.4 * (df["reservoir_pressure"] / 6000).clip(0, 1) +
-            0.3 * (1 - df["water_cut"].fillna(0)) +
-            0.3 * (df["production_rate"] / df.groupby("well_id")["production_rate"].transform("max"))
+            0.4 * (df["reservoir_pressure"] / 6000).clip(0, 1)
+            + 0.3 * (1 - df["water_cut"].fillna(0))
+            + 0.3 * (df["production_rate"] / df.groupby("well_id")["production_rate"].transform("max"))
         ).round(4)
 
         return df
@@ -313,7 +313,7 @@ class ReservoirFieldGenerator:
             json.dump(metadata, f, indent=2)
 
         print(f"\n{'=' * 60}")
-        print(f"GENERATION COMPLETE")
+        print("GENERATION COMPLETE")
         print(f"  Total records: {len(temporal):,}")
         print(f"  Wells: {self.num_wells}")
         print(f"  Time steps: {self.num_timesteps}")

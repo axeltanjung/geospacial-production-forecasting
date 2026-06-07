@@ -1,139 +1,165 @@
 """
-Gaussian Process Regression for Spatial Production Interpolation.
+Graph Neural Network Models for Well Production Forecasting.
 
-Uses GPyTorch for efficient GP inference with:
-- RBF + Matérn composite kernel for multi-scale spatial patterns
-- Uncertainty quantification via posterior variance
-- Spatial production surface mapping
+Implements:
+- Graph Convolutional Network (GCN)
+- Graph Attention Network (GAT)
+- Combined GCN-GAT Model
 """
 
 import torch
-import numpy as np
-import pandas as pd
-from typing import Tuple, Dict, Optional
-
-try:
-    import gpytorch
-    from gpytorch.models import ExactGP
-    from gpytorch.means import ConstantMean
-    from gpytorch.kernels import ScaleKernel, RBFKernel, MaternKernel, AdditiveKernel
-    from gpytorch.likelihoods import GaussianLikelihood
-    from gpytorch.distributions import MultivariateNormal
-    HAS_GPYTORCH = True
-except ImportError:
-    HAS_GPYTORCH = False
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Tuple
 
 
-class SpatialGPModel(gpytorch.models.ExactGP if HAS_GPYTORCH else object):
-    def __init__(self, train_x, train_y, likelihood):
-        if not HAS_GPYTORCH:
-            raise ImportError("GPyTorch required. Install via: pip install gpytorch")
-        super().__init__(train_x, train_y, likelihood)
-        self.mean_module = ConstantMean()
-        rbf_kernel = ScaleKernel(RBFKernel(ard_num_dims=2))
-        matern_kernel = ScaleKernel(MaternKernel(nu=1.5, ard_num_dims=2))
-        self.covar_module = AdditiveKernel(rbf_kernel, matern_kernel)
+class GraphConvLayer(nn.Module):
+    def __init__(self, in_features: int, out_features: int, bias: bool = True):
+        super().__init__()
+        self.weight = nn.Parameter(torch.FloatTensor(in_features, out_features))
+        self.bias = nn.Parameter(torch.FloatTensor(out_features)) if bias else None
+        self._reset_parameters()
 
-    def forward(self, x):
-        mean = self.mean_module(x)
-        covar = self.covar_module(x)
-        return MultivariateNormal(mean, covar)
+    def _reset_parameters(self):
+        nn.init.xavier_uniform_(self.weight)
+        if self.bias is not None:
+            nn.init.zeros_(self.bias)
+
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        support = torch.mm(x, self.weight)
+        degree = adj.sum(dim=1, keepdim=True).clamp(min=1)
+        norm_adj = adj / degree
+        output = torch.mm(norm_adj, support)
+        if self.bias is not None:
+            output += self.bias
+        return output
 
 
-class SpatialGaussianProcess:
-    def __init__(self, learning_rate: float = 0.1, training_iterations: int = 100):
-        self.lr = learning_rate
-        self.iterations = training_iterations
-        self.model = None
-        self.likelihood = None
-        self.train_x = None
-        self.train_y = None
-        self.is_trained = False
+class GraphAttentionLayer(nn.Module):
+    def __init__(self, in_features: int, out_features: int, num_heads: int = 4, dropout: float = 0.1):
+        super().__init__()
+        self.num_heads = num_heads
+        self.head_dim = out_features // num_heads
+        self.W = nn.Linear(in_features, out_features, bias=False)
+        self.a_src = nn.Parameter(torch.FloatTensor(num_heads, self.head_dim, 1))
+        self.a_tgt = nn.Parameter(torch.FloatTensor(num_heads, self.head_dim, 1))
+        self.dropout = nn.Dropout(dropout)
+        self.leaky_relu = nn.LeakyReLU(0.2)
+        self._reset_parameters()
 
-    def fit(self, coordinates: np.ndarray, values: np.ndarray) -> Dict:
-        if not HAS_GPYTORCH:
-            return self._fit_fallback(coordinates, values)
+    def _reset_parameters(self):
+        nn.init.xavier_uniform_(self.a_src)
+        nn.init.xavier_uniform_(self.a_tgt)
 
-        self.train_x = torch.tensor(coordinates, dtype=torch.float32)
-        self.train_y = torch.tensor(values, dtype=torch.float32)
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        N = x.size(0)
+        h = self.W(x).view(N, self.num_heads, self.head_dim)
 
-        self.likelihood = GaussianLikelihood()
-        self.model = SpatialGPModel(self.train_x, self.train_y, self.likelihood)
+        attn_src = torch.einsum("nhd,hdk->nh", h, self.a_src)
+        attn_tgt = torch.einsum("nhd,hdk->nh", h, self.a_tgt)
 
-        self.model.train()
-        self.likelihood.train()
+        attn = attn_src.unsqueeze(2) + attn_tgt.unsqueeze(1)
+        attn = self.leaky_relu(attn)
 
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
+        mask = (adj == 0).unsqueeze(-1).expand_as(attn.permute(2, 0, 1)).permute(1, 2, 0)
+        attn = attn.masked_fill(adj.unsqueeze(-1) == 0, float("-inf"))
+        attn = F.softmax(attn, dim=1)
+        attn = self.dropout(attn)
 
-        losses = []
-        for i in range(self.iterations):
-            optimizer.zero_grad()
-            output = self.model(self.train_x)
-            loss = -mll(output, self.train_y)
-            loss.backward()
-            optimizer.step()
-            losses.append(loss.item())
+        h_prime = torch.einsum("nmh,nhd->nhd", attn, h)
+        return h_prime.reshape(N, -1)
 
-        self.is_trained = True
-        return {
-            "final_loss": losses[-1],
-            "iterations": self.iterations,
-            "num_training_points": len(values)
-        }
 
-    def predict(self, coordinates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        if not self.is_trained:
-            raise ValueError("Model must be trained before prediction")
+class WellGCN(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, output_dim: int = 3, num_layers: int = 3, dropout: float = 0.2):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        self.layers.append(GraphConvLayer(input_dim, hidden_dim))
+        self.norms.append(nn.LayerNorm(hidden_dim))
 
-        if not HAS_GPYTORCH:
-            return self._predict_fallback(coordinates)
+        for _ in range(num_layers - 2):
+            self.layers.append(GraphConvLayer(hidden_dim, hidden_dim))
+            self.norms.append(nn.LayerNorm(hidden_dim))
 
-        test_x = torch.tensor(coordinates, dtype=torch.float32)
+        self.layers.append(GraphConvLayer(hidden_dim, hidden_dim))
+        self.norms.append(nn.LayerNorm(hidden_dim))
 
-        self.model.eval()
-        self.likelihood.eval()
+        self.output_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, output_dim)
+        )
+        self.dropout = nn.Dropout(dropout)
 
-        with torch.no_grad(), gpytorch.settings.fast_pred_var():
-            observed_pred = self.likelihood(self.model(test_x))
-            mean = observed_pred.mean.numpy()
-            lower, upper = observed_pred.confidence_region()
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        for layer, norm in zip(self.layers, self.norms):
+            h = layer(x, adj)
+            h = norm(h)
+            h = F.relu(h)
+            h = self.dropout(h)
+            if h.shape == x.shape:
+                h = h + x
+            x = h
+        return self.output_head(x)
 
-        return mean, lower.numpy(), upper.numpy()
 
-    def predict_grid(self, lat_range: Tuple[float, float], lon_range: Tuple[float, float],
-                     resolution: int = 50) -> Dict:
-        lat_grid = np.linspace(lat_range[0], lat_range[1], resolution)
-        lon_grid = np.linspace(lon_range[0], lon_range[1], resolution)
-        grid_lat, grid_lon = np.meshgrid(lat_grid, lon_grid)
-        grid_points = np.column_stack([grid_lat.ravel(), grid_lon.ravel()])
+class WellGAT(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, output_dim: int = 3, num_heads: int = 4, dropout: float = 0.2):
+        super().__init__()
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+        self.gat1 = GraphAttentionLayer(hidden_dim, hidden_dim, num_heads=num_heads, dropout=dropout)
+        self.gat2 = GraphAttentionLayer(hidden_dim, hidden_dim, num_heads=num_heads, dropout=dropout)
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.output_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, output_dim)
+        )
+        self.dropout = nn.Dropout(dropout)
 
-        mean, lower, upper = self.predict(grid_points)
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> torch.Tensor:
+        x = F.relu(self.input_proj(x))
+        h = self.gat1(x, adj)
+        h = self.norm1(h)
+        h = F.elu(h)
+        h = self.dropout(h) + x
+        x = h
+        h = self.gat2(x, adj)
+        h = self.norm2(h)
+        h = F.elu(h)
+        h = self.dropout(h) + x
+        return self.output_head(h)
 
-        return {
-            "lat_grid": grid_lat.tolist(),
-            "lon_grid": grid_lon.tolist(),
-            "mean": mean.reshape(resolution, resolution).tolist(),
-            "lower": lower.reshape(resolution, resolution).tolist(),
-            "upper": upper.reshape(resolution, resolution).tolist(),
-            "uncertainty": (upper - lower).reshape(resolution, resolution).tolist()
-        }
 
-    def _fit_fallback(self, coordinates: np.ndarray, values: np.ndarray) -> Dict:
-        from scipy.interpolate import RBFInterpolator
-        self._rbf = RBFInterpolator(coordinates, values, kernel="thin_plate_spline")
-        self._train_std = np.std(values)
-        self._train_coords = coordinates
-        self._train_values = values
-        self.is_trained = True
-        return {"final_loss": 0.0, "iterations": 0, "num_training_points": len(values), "fallback": True}
+class WellProductionGNN(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int = 128, output_dim: int = 3, dropout: float = 0.2):
+        super().__init__()
+        self.gcn_branch = nn.Sequential(
+            GraphConvLayer(input_dim, hidden_dim),
+        )
+        self.input_proj = nn.Linear(input_dim, hidden_dim)
+        self.gcn1 = GraphConvLayer(input_dim, hidden_dim)
+        self.gcn2 = GraphConvLayer(hidden_dim, hidden_dim)
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.output_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, output_dim * 2)  # mean + variance
+        )
+        self.dropout = nn.Dropout(dropout)
 
-    def _predict_fallback(self, coordinates: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        from scipy.spatial.distance import cdist
-        mean = self._rbf(coordinates)
-        dists = cdist(coordinates, self._train_coords)
-        min_dists = dists.min(axis=1)
-        uncertainty = self._train_std * (1 - np.exp(-min_dists / 0.05))
-        lower = mean - 1.96 * uncertainty
-        upper = mean + 1.96 * uncertainty
-        return mean, lower, upper
+    def forward(self, x: torch.Tensor, adj: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        h = F.relu(self.norm1(self.gcn1(x, adj)))
+        h = self.dropout(h)
+        h = F.relu(self.norm2(self.gcn2(h, adj)))
+        h = self.dropout(h)
+        out = self.output_head(h)
+        mean, log_var = torch.chunk(out, 2, dim=-1)
+        std = torch.exp(0.5 * log_var).clamp(min=1e-6)
+        return mean, std
