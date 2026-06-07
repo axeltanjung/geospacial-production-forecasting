@@ -19,7 +19,7 @@
     "react-plotly.js": "^2.6.0",
     "framer-motion": "^10.16.16",
     "axios": "^1.6.2",
-    "leaflet-heat": "^0.2.0",
+    "leaflet.heat": "^0.2.0",
     "d3": "^7.8.5"
   },
   "devDependencies": {

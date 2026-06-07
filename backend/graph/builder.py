@@ -7,7 +7,7 @@ Graph Builder: Constructs well connectivity graphs for GNN models.
 import numpy as np
 import pandas as pd
 import networkx as nx
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple
 
 
 class WellGraphBuilder:
@@ -89,7 +89,6 @@ class WellGraphBuilder:
         }
 
     def export_for_visualization(self, graph: nx.Graph) -> Dict:
-        well_id_to_idx = {wid: i for i, wid in enumerate(self.wells["well_id"])}
         nodes = []
         for _, row in self.wells.iterrows():
             nodes.append({

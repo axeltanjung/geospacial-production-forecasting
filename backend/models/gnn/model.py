@@ -61,7 +61,6 @@ class GraphAttentionLayer(nn.Module):
         attn = attn_src.unsqueeze(2) + attn_tgt.unsqueeze(1)
         attn = self.leaky_relu(attn)
 
-        mask = (adj == 0).unsqueeze(-1).expand_as(attn.permute(2, 0, 1)).permute(1, 2, 0)
         attn = attn.masked_fill(adj.unsqueeze(-1) == 0, float("-inf"))
         attn = F.softmax(attn, dim=1)
         attn = self.dropout(attn)

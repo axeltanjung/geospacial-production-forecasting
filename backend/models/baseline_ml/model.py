@@ -4,7 +4,7 @@ Baseline ML Models: XGBoost and LightGBM for production forecasting.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
