@@ -5,6 +5,9 @@
 A production-grade AI platform that forecasts oil/gas production per well by explicitly modeling spatial dependency between wells using Graph Neural Networks, Gaussian Processes, and Spatio-Temporal deep learning.
 
 ---
+## Project Preview
+
+<img src="assets/Geo Mapping.png" width="1200"/>
 
 ## Project Background
 
