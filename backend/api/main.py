@@ -115,7 +115,7 @@ async def explain_spatial(request: ExplainRequest):
 @app.get("/wells")
 async def list_wells():
     if service.wells is None:
-        return {"wells": []}
+        return {"wells": [], "count": 0}
     wells = service.wells[["well_id", "latitude", "longitude", "reservoir_zone", "depth"]].to_dict(orient="records")
     return {"wells": wells, "count": len(wells)}
 

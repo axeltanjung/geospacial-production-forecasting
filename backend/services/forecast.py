@@ -90,6 +90,8 @@ class ForecastService:
         }
 
     def predict_production(self, well_id: str, horizon: int = 30) -> Dict:
+        if self.temporal is None:
+            return {"error": "Data not loaded"}
         well_data = self.temporal[self.temporal["well_id"] == well_id].sort_values("timestamp")
         if well_data.empty:
             return {"error": "Well not found"}
@@ -121,6 +123,8 @@ class ForecastService:
         }
 
     def predict_spatial_impact(self, well_id: str) -> Dict:
+        if self.wells is None or self.temporal is None:
+            return {"error": "Data not loaded"}
         well = self.wells[self.wells["well_id"] == well_id]
         if well.empty:
             return {"error": "Well not found"}
